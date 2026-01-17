@@ -2,7 +2,7 @@ import { getTodaysDigest } from '@/lib/supabase'
 import StoryCard from '@/components/StoryCard'
 import Header from '@/components/Header'
 
-export const revalidate = 3600 // Revalidate every hour
+export const revalidate = 300 // Revalidate every 5 minutes
 
 export default async function Home() {
   const digest = await getTodaysDigest()
