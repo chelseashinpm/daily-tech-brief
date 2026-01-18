@@ -7,6 +7,7 @@ import os
 import sys
 import json
 import hashlib
+import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 
@@ -257,6 +258,11 @@ def main():
 
     for i, article in enumerate(articles[:25], 1):
         print(f"\n  [{i}/25] Processing: {article['title'][:60]}...")
+
+        # Add delay to respect rate limits (5 requests/minute = 1 request every 12 seconds)
+        if i > 1:  # Skip delay for first request
+            print("    [WAIT] Waiting 12 seconds for rate limit...")
+            time.sleep(12)
 
         analysis = process_with_gemini(article)
 
