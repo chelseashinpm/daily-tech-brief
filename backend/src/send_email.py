@@ -4,12 +4,14 @@ Sends the daily digest via email using Resend
 """
 
 import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import date
 from typing import List, Dict
 
 from supabase import create_client, Client
 from dotenv import load_dotenv
-import requests
 
 # Load environment variables
 load_dotenv()
@@ -20,9 +22,9 @@ supabase: Client = create_client(
     os.getenv("SUPABASE_KEY")
 )
 
-# Resend configuration
-RESEND_API_KEY = os.getenv("RESEND_API_KEY")
-RESEND_API_URL = "https://api.resend.com/emails"
+# Gmail SMTP configuration
+GMAIL_ADDRESS = "chelseashin@gmail.com"
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 
 
 def get_todays_digest() -> Dict:
@@ -128,31 +130,28 @@ def generate_html_email(digest: Dict) -> str:
 
 
 def send_email(to_email: str, digest: Dict) -> bool:
-    """Send email via Resend"""
+    """Send email via Gmail SMTP"""
     try:
         html_content = generate_html_email(digest)
         formatted_date = date.today().strftime("%B %d, %Y")
 
-        headers = {
-            "Authorization": f"Bearer {RESEND_API_KEY}",
-            "Content-Type": "application/json"
-        }
+        # Create message
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = f"Daily Tech Brief - {formatted_date}"
+        msg['From'] = f"Daily Tech Brief <{GMAIL_ADDRESS}>"
+        msg['To'] = to_email
 
-        payload = {
-            "from": "Daily Tech Brief <onboarding@resend.dev>",
-            "to": [to_email],
-            "subject": f"Daily Tech Brief - {formatted_date}",
-            "html": html_content
-        }
+        # Attach HTML content
+        html_part = MIMEText(html_content, 'html')
+        msg.attach(html_part)
 
-        response = requests.post(RESEND_API_URL, json=payload, headers=headers)
+        # Send via Gmail SMTP
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_ADDRESS, to_email, msg.as_string())
 
-        if response.status_code == 200:
-            print(f"[OK] Email sent successfully to {to_email}")
-            return True
-        else:
-            print(f"[ERROR] Failed to send email: {response.status_code} - {response.text}")
-            return False
+        print(f"[OK] Email sent successfully to {to_email}")
+        return True
 
     except Exception as e:
         print(f"[ERROR] Error sending email: {e}")
