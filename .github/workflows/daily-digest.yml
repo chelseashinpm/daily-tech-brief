@@ -44,6 +44,15 @@ jobs:
           cd backend/src
           python generate_digest.py
 
+      - name: Send email digest
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          cd backend/src
+          python send_email.py
+
       - name: Notify on failure
         if: failure()
         run: |
