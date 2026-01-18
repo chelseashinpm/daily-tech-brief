@@ -231,8 +231,29 @@ def main():
     print(f"\nProcessing articles with Gemini API...")
     processed_count = 0
 
-    # Sort by trust score first
-    articles.sort(key=lambda x: x["trust_score"], reverse=True)
+    # Sort by source diversity first (to ensure we get articles from different sources)
+    # Group by source, then take top articles from each source in round-robin
+    from collections import defaultdict
+    import random
+
+    articles_by_source = defaultdict(list)
+    for article in articles:
+        articles_by_source[article["source_name"]].append(article)
+
+    # Sort articles within each source by trust score
+    for source in articles_by_source:
+        articles_by_source[source].sort(key=lambda x: x["trust_score"], reverse=True)
+
+    # Round-robin selection from sources to ensure diversity
+    diverse_articles = []
+    max_per_source = 5  # Max 5 articles per source
+    sources = list(articles_by_source.keys())
+    for i in range(max_per_source):
+        for source in sources:
+            if i < len(articles_by_source[source]):
+                diverse_articles.append(articles_by_source[source][i])
+
+    articles = diverse_articles
 
     for i, article in enumerate(articles[:25], 1):
         print(f"\n  [{i}/25] Processing: {article['title'][:60]}...")
