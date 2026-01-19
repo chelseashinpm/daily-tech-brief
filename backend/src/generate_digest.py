@@ -23,8 +23,28 @@ supabase: Client = create_client(
 )
 
 
-def get_processed_stories(days: int = 2) -> List[Dict]:
-    """Get all processed stories from the last N days"""
+def get_previously_used_story_ids(days: int = 7) -> List[str]:
+    """Get story IDs that were already used in previous digests"""
+    try:
+        cutoff_date = (datetime.now() - timedelta(days=days)).date().isoformat()
+        result = supabase.table("daily_digests") \
+            .select("story_ids") \
+            .gte("digest_date", cutoff_date) \
+            .execute()
+
+        # Flatten all story_ids from all digests
+        used_ids = []
+        for digest in result.data:
+            used_ids.extend(digest.get("story_ids", []))
+
+        return used_ids
+    except Exception as e:
+        print(f"Error fetching previous digests: {e}")
+        return []
+
+
+def get_processed_stories(days: int = 2, exclude_story_ids: List[str] = None) -> List[Dict]:
+    """Get all processed stories from the last N days, excluding previously used ones"""
     try:
         # Get stories created in the last N days (not published_at, which might be older)
         cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
@@ -34,6 +54,14 @@ def get_processed_stories(days: int = 2) -> List[Dict]:
             .gte("created_at", cutoff_date) \
             .order("relevance_score", desc=True) \
             .execute()
+
+        # Filter out previously used stories
+        if exclude_story_ids:
+            filtered_stories = [
+                story for story in result.data
+                if story["id"] not in exclude_story_ids
+            ]
+            return filtered_stories
 
         return result.data
     except Exception as e:
@@ -138,17 +166,22 @@ def main():
     print("=" * 60)
     print()
 
-    # Step 1: Get processed stories
-    print("Fetching processed stories...")
-    stories = get_processed_stories(days=2)
+    # Step 1: Get previously used story IDs
+    print("Checking previously used stories...")
+    used_story_ids = get_previously_used_story_ids(days=7)
+    print(f"   Excluding {len(used_story_ids)} previously used stories")
+
+    # Step 2: Get processed stories (excluding previously used)
+    print("\nFetching fresh processed stories...")
+    stories = get_processed_stories(days=2, exclude_story_ids=used_story_ids)
 
     if not stories:
-        print("[WARNING] No processed stories found. Run ingestion first.")
+        print("[WARNING] No fresh stories found. Run ingestion or extend search window.")
         return
 
-    print(f"   Found {len(stories)} processed stories")
+    print(f"   Found {len(stories)} fresh processed stories")
 
-    # Step 2: Select top stories with topic distribution
+    # Step 3: Select top stories with topic distribution
     print("\nSelecting stories for digest...")
 
     # Ensure topic coverage
@@ -162,7 +195,7 @@ def main():
         print(f"[WARNING] Only {len(selected_stories)} stories available (need at least 5)")
         # Continue anyway with what we have
 
-    # Step 3: Display selection
+    # Step 4: Display selection
     print(f"\n   Selected {len(selected_stories)} stories:")
     for i, story in enumerate(selected_stories, 1):
         print(f"     {i}. {story['title'][:60]}...")
@@ -176,7 +209,7 @@ def main():
     for topic, count in distribution.items():
         print(f"     - {topic}: {count}")
 
-    # Step 4: Create digest
+    # Step 5: Create digest
     print(f"\nCreating daily digest...")
     if create_daily_digest(selected_stories):
         print(f"\n{'=' * 60}")
