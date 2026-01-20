@@ -95,17 +95,24 @@ def ensure_topic_coverage(stories: List[Dict]) -> List[Dict]:
     }
 
     selected = []
+    selected_ids = set()  # Track story IDs to prevent duplicates
     topic_coverage = {topic: 0 for topic in required_topics}
 
     # First pass: Select stories to meet minimum requirements
     for story in stories:
+        story_id = story["id"]
+
+        # Skip if already selected
+        if story_id in selected_ids:
+            continue
+
         story_topics = story.get("topics", [])
 
         # Check if this story helps meet requirements
         for req_topic in required_topics:
             if req_topic in story_topics and topic_coverage[req_topic] < required_topics[req_topic]:
-                if story not in selected:
-                    selected.append(story)
+                selected.append(story)
+                selected_ids.add(story_id)
                 topic_coverage[req_topic] += 1
                 break
 
@@ -114,11 +121,16 @@ def ensure_topic_coverage(stories: List[Dict]) -> List[Dict]:
             break
 
     # Second pass: Fill remaining slots with highest relevance stories
-    remaining_slots = 8 - len(selected)
-
     for story in stories:
-        if story not in selected and len(selected) < 8:
+        story_id = story["id"]
+
+        # Skip if already selected
+        if story_id in selected_ids:
+            continue
+
+        if len(selected) < 8:
             selected.append(story)
+            selected_ids.add(story_id)
 
     return selected
 
@@ -170,16 +182,21 @@ def main():
     print("Checking previously used stories...")
     used_story_ids = get_previously_used_story_ids(days=7)
     print(f"   Excluding {len(used_story_ids)} previously used stories")
+    if used_story_ids:
+        print(f"   Used story IDs: {used_story_ids[:5]}{'...' if len(used_story_ids) > 5 else ''}")
 
     # Step 2: Get processed stories (excluding previously used)
     print("\nFetching fresh processed stories...")
+    all_stories = get_processed_stories(days=2, exclude_story_ids=None)
+    print(f"   Total processed stories in last 2 days: {len(all_stories)}")
+
     stories = get_processed_stories(days=2, exclude_story_ids=used_story_ids)
 
     if not stories:
         print("[WARNING] No fresh stories found. Run ingestion or extend search window.")
         return
 
-    print(f"   Found {len(stories)} fresh processed stories")
+    print(f"   Found {len(stories)} fresh processed stories after filtering")
 
     # Step 3: Select top stories with topic distribution
     print("\nSelecting stories for digest...")
@@ -197,11 +214,24 @@ def main():
 
     # Step 4: Display selection
     print(f"\n   Selected {len(selected_stories)} stories:")
+    selected_story_ids = []
     for i, story in enumerate(selected_stories, 1):
+        story_id = story['id']
+        selected_story_ids.append(story_id)
         print(f"     {i}. {story['title'][:60]}...")
+        print(f"        ID: {story_id}")
         print(f"        Topics: {', '.join(story.get('topics', []))}")
         print(f"        Relevance: {story.get('relevance_score', 0):.2f}")
         print()
+
+    # Check for duplicates within selection
+    if len(selected_story_ids) != len(set(selected_story_ids)):
+        print("[ERROR] DUPLICATE STORIES DETECTED IN SELECTION!")
+        print(f"   Selected: {len(selected_story_ids)} stories")
+        print(f"   Unique: {len(set(selected_story_ids))} stories")
+        duplicate_ids = [sid for sid in selected_story_ids if selected_story_ids.count(sid) > 1]
+        print(f"   Duplicate IDs: {set(duplicate_ids)}")
+        return
 
     # Check topic distribution
     distribution = check_topic_distribution(selected_stories)
